@@ -1,12 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 from cryptography.fernet import Fernet
+import bcrypt
 import os
 
 class PasswordManager:
     def __init__(self):
         self.key_file = "secret.key"
         self.password_file = "passwords.txt"
+        self.master_password_file = "master.pass"
         self.key = self.load_or_generate_key()
 
     def load_or_generate_key(self):
@@ -82,12 +84,66 @@ class PasswordManager:
         except FileNotFoundError:
             pass
 
+    def set_master_password(self, master_password):
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(master_password.encode(), salt)
+        with open(self.master_password_file, "wb") as f:
+            f.write(hashed)
+
+    def check_master_password(self, master_password):
+        try:
+            with open(self.master_password_file, "rb") as f:
+                stored_hash = f.read()
+                return bcrypt.checkpw(master_password.encode(), stored_hash)
+        except FileNotFoundError:
+            return False
+
 class PasswordManagerGUI:
     def __init__(self, root):
         self.pm = PasswordManager()
         self.root = root
         self.root.title("Password Manager")
         self.root.geometry("400x300")
+
+        # Show login screen first
+        self.show_login_screen()
+
+    def show_login_screen(self):
+        self.clear_root()
+        login_frame = ttk.Frame(self.root, padding="10 10 10 10")
+        login_frame.grid(row=0, column=0, sticky="EW")
+
+        self.master_password_label = ttk.Label(login_frame, text="Master Password:")
+        self.master_password_label.grid(row=0, column=0, padx=5, pady=5, sticky="W")
+
+        self.master_password_entry = ttk.Entry(login_frame, width=30, show="*")
+        self.master_password_entry.grid(row=0, column=1, padx=5, pady=5, sticky="EW")
+
+        self.login_button = ttk.Button(login_frame, text="Login", command=self.login)
+        self.login_button.grid(row=1, column=1, padx=5, pady=5, sticky="E")
+
+        if not os.path.exists(self.pm.master_password_file):
+            self.master_password_label.config(text="Set Master Password:")
+            self.login_button.config(text="Set Password", command=self.set_master_password)
+
+    def login(self):
+        master_password = self.master_password_entry.get()
+        if self.pm.check_master_password(master_password):
+            self.show_main_screen()
+        else:
+            messagebox.showwarning("Login Failed", "Incorrect master password!")
+
+    def set_master_password(self):
+        master_password = self.master_password_entry.get()
+        if master_password:
+            self.pm.set_master_password(master_password)
+            messagebox.showinfo("Success", "Master password set successfully!")
+            self.show_main_screen()
+        else:
+            messagebox.showwarning("Input Error", "Please enter a valid master password.")
+
+    def show_main_screen(self):
+        self.clear_root()
 
         # Configure style
         style = ttk.Style()
@@ -96,7 +152,7 @@ class PasswordManagerGUI:
         style.configure("TEntry", font=("Helvetica", 12))
 
         # Frame for service and password inputs
-        input_frame = ttk.Frame(root, padding="10 10 10 10")
+        input_frame = ttk.Frame(self.root, padding="10 10 10 10")
         input_frame.grid(row=0, column=0, sticky="EW")
 
         # Service label and entry
@@ -114,7 +170,7 @@ class PasswordManagerGUI:
         self.password_entry.grid(row=1, column=1, padx=5, pady=5, sticky="EW")
 
         # Button Frame
-        button_frame = ttk.Frame(root, padding="10 10 10 10")
+        button_frame = ttk.Frame(self.root, padding="10 10 10 10")
         button_frame.grid(row=1, column=0, sticky="EW")
 
         # Add button
@@ -134,14 +190,14 @@ class PasswordManagerGUI:
         self.delete_button.grid(row=1, column=1, padx=5, pady=5)
 
         # Menu Bar
-        menu_bar = tk.Menu(root)
-        root.config(menu=menu_bar)
+        menu_bar = tk.Menu(self.root)
+        self.root.config(menu=menu_bar)
 
         file_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Change Key", command=self.change_key)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=root.quit)
+        file_menu.add_command(label="Exit", command=self.root.quit)
 
         help_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="Help", menu=help_menu)
@@ -185,8 +241,12 @@ class PasswordManagerGUI:
         self.service_entry.delete(0, tk.END)
         self.password_entry.delete(0, tk.END)
 
+    def clear_root(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
     def show_about(self):
-        messagebox.showinfo("About", "Password Manager\nDeveloped by Daksh Thapar")
+        messagebox.showinfo("About", "Password Manager v2.0\nDeveloped by Daksh Thapar")
 
 if __name__ == "__main__":
     root = tk.Tk()
