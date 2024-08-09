@@ -2,3 +2,4 @@ passwords.txt
 secret.key
 my_env
 master.pass
+__pycache__

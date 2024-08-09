@@ -1,379 +1,143 @@
-import tkinter as tk
-from tkinter import messagebox, ttk, font, simpledialog
-from cryptography.fernet import Fernet, InvalidToken
-import bcrypt
-import os
+from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, FadeTransition, Screen
+from login import LoginScreen
+from password_manager import PasswordManager
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.popup import Popup
+from kivy.uix.slider import Slider
+from kivy.uix.recycleview import RecycleView
 import random
 import string
 
-class PasswordManager:
-    def __init__(self):
-        self.key_file = "secret.key"
-        self.password_file = "passwords.txt"
-        self.master_password_file = "master.pass"
-        self.key = self.load_or_generate_key()
+class MainScreen(Screen):
+    def __init__(self, **kwargs):
+        super(MainScreen, self).__init__(**kwargs)
+        self.password_manager = None  # Initialize as None
 
-    def load_or_generate_key(self):
-        if not os.path.exists(self.key_file):
-            self.generate_key()
-        return self.load_key()
+        layout = GridLayout(cols=2, padding=10, spacing=10)
 
-    def generate_key(self):
-        key = Fernet.generate_key()
-        with open(self.key_file, "wb") as key_file:
-            key_file.write(key)
+        self.service_label = Label(text="Service:")
+        layout.add_widget(self.service_label)
 
-    def load_key(self):
-        try:
-            with open(self.key_file, "rb") as key_file:
-                return key_file.read()
-        except FileNotFoundError:
-            self.generate_key()
-            return self.load_key()
+        self.service_input = TextInput()
+        layout.add_widget(self.service_input)
 
-    def encrypt_password(self, password):
-        fernet = Fernet(self.key)
-        return fernet.encrypt(password.encode())
+        self.password_label = Label(text="Password:")
+        layout.add_widget(self.password_label)
 
-    def decrypt_password(self, encrypted_password):
-        fernet = Fernet(self.key)
-        try:
-            return fernet.decrypt(encrypted_password).decode()
-        except InvalidToken:
-            raise ValueError("Invalid key - unable to decrypt data. The key might have changed or the data is corrupted.")
+        self.password_input = TextInput(password=True)
+        layout.add_widget(self.password_input)
 
-    def add_password(self, service, password):
-        encrypted_password = self.encrypt_password(password)
-        with open(self.password_file, "a") as f:
-            f.write(f"{service}:{encrypted_password.decode()}\n")
+        self.password_strength_label = Label(text="Strength:")
+        layout.add_widget(self.password_strength_label)
 
-    def get_password(self, service):
-        try:
-            with open(self.password_file, "r") as f:
-                for line in f:
-                    stored_service, stored_password = line.strip().split(":")
-                    if stored_service == service:
-                        return self.decrypt_password(stored_password.encode())
-            return None
-        except FileNotFoundError:
-            return None
+        self.password_strength_slider = Slider(min=0, max=10, value=0)
+        layout.add_widget(self.password_strength_slider)
 
-    def get_all_services(self):
-        try:
-            with open(self.password_file, "r") as f:
-                return [line.split(":")[0] for line in f.readlines()]
-        except FileNotFoundError:
-            return []
+        self.add_password_button = Button(text="Add Password", on_press=self.add_password)
+        layout.add_widget(self.add_password_button)
 
-    def change_key(self):
-        old_key = self.key
-        self.generate_key()
-        new_key = self.key
+        self.get_password_button = Button(text="Get Password", on_press=self.get_password)
+        layout.add_widget(self.get_password_button)
 
-        try:
-            with open(self.password_file, "r") as f:
-                lines = f.readlines()
+        self.delete_password_button = Button(text="Delete Password", on_press=self.delete_password)
+        layout.add_widget(self.delete_password_button)
 
-            with open(self.password_file, "w") as f:
-                for line in lines:
-                    service, encrypted_password = line.strip().split(":")
-                    decrypted_password = Fernet(old_key).decrypt(encrypted_password.encode()).decode()
-                    new_encrypted_password = Fernet(new_key).encrypt(decrypted_password.encode()).decode()
-                    f.write(f"{service}:{new_encrypted_password}\n")
-        except FileNotFoundError:
-            pass
+        self.password_generator_button = Button(text="Generate Password", on_press=self.generate_password)
+        layout.add_widget(self.password_generator_button)
 
-    def delete_password(self, service):
-        try:
-            with open(self.password_file, "r") as f:
-                lines = f.readlines()
+        self.service_list = RecycleView()  # Implement the service list as needed
+        layout.add_widget(self.service_list)
 
-            with open(self.password_file, "w") as f:
-                for line in lines:
-                    stored_service, stored_password = line.strip().split(":")
-                    if stored_service != service:
-                        f.write(line)
-        except FileNotFoundError:
-            pass
+        self.add_widget(layout)
 
-    def set_master_password(self, master_password):
-        salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(master_password.encode(), salt)
-        with open(self.master_password_file, "wb") as f:
-            f.write(hashed)
+    def set_password_manager(self, password_manager):
+        """Set the password manager after initialization."""
+        self.password_manager = password_manager
+        self.update_service_list()
 
-    def check_master_password(self, master_password):
-        try:
-            with open(self.master_password_file, "rb") as f:
-                stored_hash = f.read()
-                return bcrypt.checkpw(master_password.encode(), stored_hash)
-        except FileNotFoundError:
-            return False
-
-class PasswordManagerGUI:
-    INACTIVITY_TIMEOUT = 5 * 60 * 1000  # 5 minutes in milliseconds
-
-    def __init__(self, root):
-        self.pm = PasswordManager()
-        self.root = root
-        self.root.title("Password Manager")
-        self.root.geometry("600x500")
-
-        # Set up styles
-        self.custom_font = ("JetBrains Mono", 12)
-        self.default_font = ("Helvetica", 12)
-        self.setup_styles()
-
-        # Initialize timeout and session variables
-        self.inactivity_timer = None
-        self.current_screen = "login"
-
-        self.show_login_screen()
-
-        # Set up inactivity timeout
-        self.root.bind_all("<Any-KeyPress>", self.reset_inactivity_timer)
-        self.root.bind_all("<Motion>", self.reset_inactivity_timer)
-        self.reset_inactivity_timer()
-
-    def setup_styles(self):
-        style = ttk.Style()
-        style.theme_use("clam")  # Use a modern, clean theme
-        style.configure("TLabel", font=self.default_font)
-        style.configure("TButton", font=self.default_font)
-        style.configure("TEntry", font=self.default_font)
-        style.configure("Accent.TButton", foreground="#ffffff", background="#007ACC", font=self.default_font)
-        style.configure("Strength.TLabel", font=("Helvetica", 10))
-
-    def reset_inactivity_timer(self, event=None):
-        if self.inactivity_timer is not None:
-            self.root.after_cancel(self.inactivity_timer)
-        self.inactivity_timer = self.root.after(self.INACTIVITY_TIMEOUT, self.lock_application)
-
-    def show_login_screen(self):
-        self.clear_root()
-        self.current_screen = "login"
-
-        login_frame = ttk.Frame(self.root, padding="10 10 10 10")
-        login_frame.grid(row=0, column=0, sticky="EW")
-
-        self.master_password_label = ttk.Label(login_frame, text="Master Password:", font=self.default_font)
-        self.master_password_label.grid(row=0, column=0, padx=5, pady=5, sticky="W")
-
-        self.master_password_entry = ttk.Entry(login_frame, width=30, show="*", font=self.default_font)
-        self.master_password_entry.grid(row=0, column=1, padx=5, pady=5, sticky="EW")
-
-        self.login_button = ttk.Button(login_frame, text="Login", command=self.login, style="Accent.TButton")
-        self.login_button.grid(row=1, column=1, padx=5, pady=5, sticky="E")
-
-        if not os.path.exists(self.pm.master_password_file):
-            self.master_password_label.config(text="Set Master Password:")
-            self.login_button.config(text="Set Password", command=self.set_master_password)
-
-    def login(self):
-        master_password = self.master_password_entry.get()
-        if self.pm.check_master_password(master_password):
-            self.show_main_screen()
-        else:
-            messagebox.showwarning("Login Failed", "Incorrect master password!")
-
-    def set_master_password(self):
-        master_password = self.master_password_entry.get()
-        if master_password:
-            self.pm.set_master_password(master_password)
-            messagebox.showinfo("Success", "Master password set successfully!")
-            self.show_main_screen()
-        else:
-            messagebox.showwarning("Input Error", "Please enter a valid master password.")
-
-    def show_main_screen(self):
-        self.clear_root()
-        self.current_screen = "main"
-
-        # Frame for service and password inputs
-        input_frame = ttk.Frame(self.root, padding="10 10 10 10")
-        input_frame.grid(row=0, column=0, sticky="EW")
-
-        # Service label and entry
-        self.service_label = ttk.Label(input_frame, text="Service:", font=self.default_font)
-        self.service_label.grid(row=0, column=0, padx=5, pady=5, sticky="W")
-
-        self.service_entry = ttk.Entry(input_frame, width=30, font=self.default_font)
-        self.service_entry.grid(row=0, column=1, padx=5, pady=5, sticky="EW")
-
-        # Password label and entry
-        self.password_label = ttk.Label(input_frame, text="Password:", font=self.default_font)
-        self.password_label.grid(row=1, column=0, padx=5, pady=5, sticky="W")
-
-        self.password_entry = ttk.Entry(input_frame, width=30, font=self.default_font, show="*")
-        self.password_entry.grid(row=1, column=1, padx=5, pady=5, sticky="EW")
-        self.password_entry.bind("<KeyRelease>", self.update_password_strength)
-
-        # Password Strength Indicator
-        self.password_strength_label = ttk.Label(input_frame, text="Password Strength: ", font=self.default_font)
-        self.password_strength_label.grid(row=2, column=0, padx=5, pady=5, sticky="W")
-
-        self.password_strength_indicator = ttk.Label(input_frame, text="", style="Strength.TLabel")
-        self.password_strength_indicator.grid(row=2, column=1, padx=5, pady=5, sticky="W")
-
-        # Button Frame
-        button_frame = ttk.Frame(self.root, padding="10 10 10 10")
-        button_frame.grid(row=1, column=0, sticky="EW")
-
-        # Add button
-        self.add_button = ttk.Button(button_frame, text="Add Password", command=self.add_password, style="Accent.TButton")
-        self.add_button.grid(row=0, column=0, padx=5, pady=5)
-
-        # Get button
-        self.get_button = ttk.Button(button_frame, text="Get Password", command=self.get_password)
-        self.get_button.grid(row=0, column=1, padx=5, pady=5)
-
-        # Change key button
-        self.change_key_button = ttk.Button(button_frame, text="Change Key", command=self.change_key)
-        self.change_key_button.grid(row=1, column=0, padx=5, pady=5)
-
-        # Delete button
-        self.delete_button = ttk.Button(button_frame, text="Delete Password", command=self.delete_password)
-        self.delete_button.grid(row=1, column=1, padx=5, pady=5)
-
-        # Password Generator Button
-        self.generate_button = ttk.Button(button_frame, text="Generate Password", command=self.generate_password)
-        self.generate_button.grid(row=2, column=0, padx=5, pady=5)
-
-        # Listbox Frame
-        listbox_frame = ttk.Frame(self.root, padding="10 10 10 10")
-        listbox_frame.grid(row=2, column=0, sticky="NSEW")
-
-        self.service_listbox = tk.Listbox(listbox_frame, font=self.custom_font, height=10, activestyle="none")
-        self.service_listbox.grid(row=0, column=0, sticky="NSEW")
-
-        # Scrollbar for the Listbox
-        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.service_listbox.yview)
-        scrollbar.grid(row=0, column=1, sticky="NS")
-        self.service_listbox.configure(yscrollcommand=scrollbar.set)
-
-        # Populate the listbox with services
-        self.update_service_listbox()
-
-        # Menu Bar
-        menu_bar = tk.Menu(self.root)
-        self.root.config(menu=menu_bar)
-
-        file_menu = tk.Menu(menu_bar, tearoff=0)
-        menu_bar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Lock", command=self.lock_application)
-        file_menu.add_command(label="Change Key", command=self.change_key)
-        file_menu.add_command(label="Set Timeout", command=self.set_timeout)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.root.quit)
-
-        help_menu = tk.Menu(menu_bar, tearoff=0)
-        menu_bar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
-
-        theme_menu = tk.Menu(menu_bar, tearoff=0)
-        menu_bar.add_cascade(label="Theme", menu=theme_menu)
-        theme_menu.add_command(label="Light Mode", command=lambda: self.change_theme("light"))
-        theme_menu.add_command(label="Dark Mode", command=lambda: self.change_theme("dark"))
-
-    def lock_application(self):
-        """Locks the application and returns to the login screen."""
-        self.show_login_screen()
-
-    def update_service_listbox(self):
-        services = self.pm.get_all_services()
-        self.service_listbox.delete(0, tk.END)
-        for service in services:
-            self.service_listbox.insert(tk.END, service)
-
-    def add_password(self):
-        service = self.service_entry.get()
-        password = self.password_entry.get()
+    def add_password(self, instance):
+        service = self.service_input.text
+        password = self.password_input.text
         if service and password:
-            self.pm.add_password(service, password)
-            messagebox.showinfo("Success", f"Password for {service} added successfully!")
-            self.clear_entries()
-            self.update_service_listbox()
-        else:
-            messagebox.showwarning("Input Error", "Please enter both service and password.")
+            self.password_manager.add_password(service, password)
+            self.update_service_list()
+            popup = Popup(title='Success',
+                          content=Label(text=f'Password for {service} added successfully!'),
+                          size_hint=(None, None), size=(400, 200))
+            popup.open()
 
-    def get_password(self):
-        selected_service = self.service_listbox.get(tk.ACTIVE)
-        if selected_service:
-            try:
-                password = self.pm.get_password(selected_service)
-                if password:
-                    messagebox.showinfo("Password Found", f"The password for {selected_service} is {password}")
-                else:
-                    messagebox.showwarning("Not Found", f"No password found for {selected_service}.")
-            except ValueError as e:
-                messagebox.showerror("Error", str(e))
-        else:
-            messagebox.showwarning("Input Error", "Please select a service.")
+    def get_password(self, instance):
+        service = self.service_input.text
+        if service:
+            password = self.password_manager.get_password(service)
+            if password:
+                popup = Popup(title='Password Found',
+                              content=Label(text=f'The password for {service} is {password}'),
+                              size_hint=(None, None), size=(400, 200))
+                popup.open()
+            else:
+                popup = Popup(title='Not Found',
+                              content=Label(text=f'No password found for {service}.'),
+                              size_hint=(None, None), size=(400, 200))
+                popup.open()
 
-    def change_key(self):
-        self.pm.change_key()
-        messagebox.showinfo("Success", "Secret key changed successfully!")
+    def delete_password(self, instance):
+        service = self.service_input.text
+        if service:
+            self.password_manager.delete_password(service)
+            self.update_service_list()
+            popup = Popup(title='Success',
+                          content=Label(text=f'Password for {service} deleted successfully!'),
+                          size_hint=(None, None), size=(400, 200))
+            popup.open()
 
-    def delete_password(self):
-        selected_service = self.service_listbox.get(tk.ACTIVE)
-        if selected_service:
-            self.pm.delete_password(selected_service)
-            messagebox.showinfo("Success", f"Password for {selected_service} deleted successfully!")
-            self.update_service_listbox()
-        else:
-            messagebox.showwarning("Input Error", "Please select a service.")
+    def generate_password(self, instance):
+        length = random.randint(8, 16)
+        password = ''.join(random.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(length))
+        self.password_input.text = password
+        self.update_password_strength(None)
 
-    def clear_entries(self):
-        self.service_entry.delete(0, tk.END)
-        self.password_entry.delete(0, tk.END)
-        self.password_strength_indicator.config(text="")
-
-    def clear_root(self):
-        for widget in self.root.winfo_children():
-            widget.destroy()
-
-    def update_password_strength(self, event):
-        password = self.password_entry.get()
+    def update_password_strength(self, instance):
+        password = self.password_input.text
         strength = self.check_password_strength(password)
-        self.password_strength_indicator.config(text=strength)
+        self.password_strength_slider.value = strength
 
     def check_password_strength(self, password):
         if len(password) < 6:
-            return "Weak"
+            return 2
         elif len(password) < 10:
-            return "Moderate"
+            return 5
         elif len(password) >= 10 and any(c.isdigit() for c in password) and any(c.islower() for c in password) and any(c.isupper() for c in password) and any(c in string.punctuation for c in password):
-            return "Strong"
-        return "Moderate"
+            return 10
+        return 7
 
-    def generate_password(self):
-        length = simpledialog.askinteger("Password Generator", "Enter the password length (8-32):", minvalue=8, maxvalue=32)
-        if length:
-            password = ''.join(random.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(length))
-            self.password_entry.delete(0, tk.END)
-            self.password_entry.insert(0, password)
-            self.update_password_strength(None)
+    def update_service_list(self):
+        services = self.password_manager.get_all_services()
+        # Update the RecycleView with services data
 
-    def change_theme(self, mode):
-        if mode == "light":
-            self.root.config(bg="#f0f0f0")
-            style = ttk.Style()
-            style.theme_use("clam")
-        elif mode == "dark":
-            self.root.config(bg="#2e2e2e")
-            style = ttk.Style()
-            style.theme_use("alt")
+class PasswordManagerApp(App):
+    def build(self):
+        self.password_manager = PasswordManager()
 
-    def set_timeout(self):
-        timeout = simpledialog.askinteger("Set Timeout", "Enter timeout duration in minutes:", minvalue=1, maxvalue=60)
-        if timeout:
-            self.INACTIVITY_TIMEOUT = timeout * 60 * 1000
-            self.reset_inactivity_timer()
+        sm = ScreenManager(transition=FadeTransition())
 
-    def show_about(self):
-        messagebox.showinfo("About", "Password Manager v3.0\nDeveloped by Daksh Thapar")
+        # Create LoginScreen and set the password manager
+        login_screen = LoginScreen(name='login')
+        login_screen.set_password_manager(self.password_manager)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    gui = PasswordManagerGUI(root)
-    root.mainloop()
+        # Create MainScreen and pass the password manager using set_password_manager method
+        main_screen = MainScreen(name='main')
+        main_screen.set_password_manager(self.password_manager)
+
+        # Add screens to the ScreenManager
+        sm.add_widget(login_screen)
+        sm.add_widget(main_screen)
+
+        return sm
+
+if __name__ == '__main__':
+    PasswordManagerApp().run()
