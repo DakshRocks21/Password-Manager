@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from cryptography.fernet import Fernet
 import os
 
@@ -87,30 +87,65 @@ class PasswordManagerGUI:
         self.pm = PasswordManager()
         self.root = root
         self.root.title("Password Manager")
+        self.root.geometry("400x300")
 
-        self.service_label = tk.Label(root, text="Service:")
-        self.service_label.grid(row=0, column=0, padx=10, pady=10)
+        # Configure style
+        style = ttk.Style()
+        style.configure("TLabel", font=("Helvetica", 12))
+        style.configure("TButton", font=("Helvetica", 12))
+        style.configure("TEntry", font=("Helvetica", 12))
 
-        self.service_entry = tk.Entry(root)
-        self.service_entry.grid(row=0, column=1, padx=10, pady=10)
+        # Frame for service and password inputs
+        input_frame = ttk.Frame(root, padding="10 10 10 10")
+        input_frame.grid(row=0, column=0, sticky="EW")
 
-        self.password_label = tk.Label(root, text="Password:")
-        self.password_label.grid(row=1, column=0, padx=10, pady=10)
+        # Service label and entry
+        self.service_label = ttk.Label(input_frame, text="Service:")
+        self.service_label.grid(row=0, column=0, padx=5, pady=5, sticky="W")
 
-        self.password_entry = tk.Entry(root)
-        self.password_entry.grid(row=1, column=1, padx=10, pady=10)
+        self.service_entry = ttk.Entry(input_frame, width=30)
+        self.service_entry.grid(row=0, column=1, padx=5, pady=5, sticky="EW")
 
-        self.add_button = tk.Button(root, text="Add Password", command=self.add_password)
-        self.add_button.grid(row=2, column=0, padx=10, pady=10)
+        # Password label and entry
+        self.password_label = ttk.Label(input_frame, text="Password:")
+        self.password_label.grid(row=1, column=0, padx=5, pady=5, sticky="W")
 
-        self.get_button = tk.Button(root, text="Get Password", command=self.get_password)
-        self.get_button.grid(row=2, column=1, padx=10, pady=10)
+        self.password_entry = ttk.Entry(input_frame, width=30)
+        self.password_entry.grid(row=1, column=1, padx=5, pady=5, sticky="EW")
 
-        self.change_key_button = tk.Button(root, text="Change Key", command=self.change_key)
-        self.change_key_button.grid(row=3, column=0, padx=10, pady=10)
+        # Button Frame
+        button_frame = ttk.Frame(root, padding="10 10 10 10")
+        button_frame.grid(row=1, column=0, sticky="EW")
 
-        self.delete_button = tk.Button(root, text="Delete Password", command=self.delete_password)
-        self.delete_button.grid(row=3, column=1, padx=10, pady=10)
+        # Add button
+        self.add_button = ttk.Button(button_frame, text="Add Password", command=self.add_password)
+        self.add_button.grid(row=0, column=0, padx=5, pady=5)
+
+        # Get button
+        self.get_button = ttk.Button(button_frame, text="Get Password", command=self.get_password)
+        self.get_button.grid(row=0, column=1, padx=5, pady=5)
+
+        # Change key button
+        self.change_key_button = ttk.Button(button_frame, text="Change Key", command=self.change_key)
+        self.change_key_button.grid(row=1, column=0, padx=5, pady=5)
+
+        # Delete button
+        self.delete_button = ttk.Button(button_frame, text="Delete Password", command=self.delete_password)
+        self.delete_button.grid(row=1, column=1, padx=5, pady=5)
+
+        # Menu Bar
+        menu_bar = tk.Menu(root)
+        root.config(menu=menu_bar)
+
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Change Key", command=self.change_key)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=root.quit)
+
+        help_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About", command=self.show_about)
 
     def add_password(self):
         service = self.service_entry.get()
@@ -149,6 +184,9 @@ class PasswordManagerGUI:
     def clear_entries(self):
         self.service_entry.delete(0, tk.END)
         self.password_entry.delete(0, tk.END)
+
+    def show_about(self):
+        messagebox.showinfo("About", "Password Manager\nDeveloped by Daksh Thapar")
 
 if __name__ == "__main__":
     root = tk.Tk()
