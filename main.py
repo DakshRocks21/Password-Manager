@@ -1,8 +1,10 @@
 import tkinter as tk
-from tkinter import messagebox, ttk, font
+from tkinter import messagebox, ttk, font, simpledialog
 from cryptography.fernet import Fernet, InvalidToken
 import bcrypt
 import os
+import random
+import string
 
 class PasswordManager:
     def __init__(self):
@@ -115,28 +117,42 @@ class PasswordManagerGUI:
         self.pm = PasswordManager()
         self.root = root
         self.root.title("Password Manager")
-        self.root.geometry("500x450") 
+        self.root.geometry("600x500")
 
-        # Load JetBrains Mono font if available, otherwise use default
+        # Set up styles
         self.custom_font = ("JetBrains Mono", 12)
         self.default_font = ("Helvetica", 12)
+        self.setup_styles()
+
+        # Initialize timeout and session variables
+        self.inactivity_timer = None
+        self.current_screen = "login"
 
         self.show_login_screen()
 
         # Set up inactivity timeout
-        self.inactivity_timer = None
         self.root.bind_all("<Any-KeyPress>", self.reset_inactivity_timer)
         self.root.bind_all("<Motion>", self.reset_inactivity_timer)
         self.reset_inactivity_timer()
 
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use("clam")  # Use a modern, clean theme
+        style.configure("TLabel", font=self.default_font)
+        style.configure("TButton", font=self.default_font)
+        style.configure("TEntry", font=self.default_font)
+        style.configure("Accent.TButton", foreground="#ffffff", background="#007ACC", font=self.default_font)
+        style.configure("Strength.TLabel", font=("Helvetica", 10))
+
     def reset_inactivity_timer(self, event=None):
-        """Reset the inactivity timer."""
         if self.inactivity_timer is not None:
             self.root.after_cancel(self.inactivity_timer)
         self.inactivity_timer = self.root.after(self.INACTIVITY_TIMEOUT, self.lock_application)
 
     def show_login_screen(self):
         self.clear_root()
+        self.current_screen = "login"
+
         login_frame = ttk.Frame(self.root, padding="10 10 10 10")
         login_frame.grid(row=0, column=0, sticky="EW")
 
@@ -171,12 +187,7 @@ class PasswordManagerGUI:
 
     def show_main_screen(self):
         self.clear_root()
-
-        # Configure style
-        style = ttk.Style()
-        style.configure("TLabel", font=self.default_font)
-        style.configure("TButton", font=self.default_font)
-        style.configure("TEntry", font=self.default_font)
+        self.current_screen = "main"
 
         # Frame for service and password inputs
         input_frame = ttk.Frame(self.root, padding="10 10 10 10")
@@ -193,15 +204,23 @@ class PasswordManagerGUI:
         self.password_label = ttk.Label(input_frame, text="Password:", font=self.default_font)
         self.password_label.grid(row=1, column=0, padx=5, pady=5, sticky="W")
 
-        self.password_entry = ttk.Entry(input_frame, width=30, font=self.default_font)
+        self.password_entry = ttk.Entry(input_frame, width=30, font=self.default_font, show="*")
         self.password_entry.grid(row=1, column=1, padx=5, pady=5, sticky="EW")
+        self.password_entry.bind("<KeyRelease>", self.update_password_strength)
+
+        # Password Strength Indicator
+        self.password_strength_label = ttk.Label(input_frame, text="Password Strength: ", font=self.default_font)
+        self.password_strength_label.grid(row=2, column=0, padx=5, pady=5, sticky="W")
+
+        self.password_strength_indicator = ttk.Label(input_frame, text="", style="Strength.TLabel")
+        self.password_strength_indicator.grid(row=2, column=1, padx=5, pady=5, sticky="W")
 
         # Button Frame
         button_frame = ttk.Frame(self.root, padding="10 10 10 10")
         button_frame.grid(row=1, column=0, sticky="EW")
 
         # Add button
-        self.add_button = ttk.Button(button_frame, text="Add Password", command=self.add_password)
+        self.add_button = ttk.Button(button_frame, text="Add Password", command=self.add_password, style="Accent.TButton")
         self.add_button.grid(row=0, column=0, padx=5, pady=5)
 
         # Get button
@@ -215,6 +234,10 @@ class PasswordManagerGUI:
         # Delete button
         self.delete_button = ttk.Button(button_frame, text="Delete Password", command=self.delete_password)
         self.delete_button.grid(row=1, column=1, padx=5, pady=5)
+
+        # Password Generator Button
+        self.generate_button = ttk.Button(button_frame, text="Generate Password", command=self.generate_password)
+        self.generate_button.grid(row=2, column=0, padx=5, pady=5)
 
         # Listbox Frame
         listbox_frame = ttk.Frame(self.root, padding="10 10 10 10")
@@ -239,6 +262,7 @@ class PasswordManagerGUI:
         menu_bar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Lock", command=self.lock_application)
         file_menu.add_command(label="Change Key", command=self.change_key)
+        file_menu.add_command(label="Set Timeout", command=self.set_timeout)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
 
@@ -246,7 +270,13 @@ class PasswordManagerGUI:
         menu_bar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
 
+        theme_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Theme", menu=theme_menu)
+        theme_menu.add_command(label="Light Mode", command=lambda: self.change_theme("light"))
+        theme_menu.add_command(label="Dark Mode", command=lambda: self.change_theme("dark"))
+
     def lock_application(self):
+        """Locks the application and returns to the login screen."""
         self.show_login_screen()
 
     def update_service_listbox(self):
@@ -296,13 +326,52 @@ class PasswordManagerGUI:
     def clear_entries(self):
         self.service_entry.delete(0, tk.END)
         self.password_entry.delete(0, tk.END)
+        self.password_strength_indicator.config(text="")
 
     def clear_root(self):
         for widget in self.root.winfo_children():
             widget.destroy()
 
+    def update_password_strength(self, event):
+        password = self.password_entry.get()
+        strength = self.check_password_strength(password)
+        self.password_strength_indicator.config(text=strength)
+
+    def check_password_strength(self, password):
+        if len(password) < 6:
+            return "Weak"
+        elif len(password) < 10:
+            return "Moderate"
+        elif len(password) >= 10 and any(c.isdigit() for c in password) and any(c.islower() for c in password) and any(c.isupper() for c in password) and any(c in string.punctuation for c in password):
+            return "Strong"
+        return "Moderate"
+
+    def generate_password(self):
+        length = simpledialog.askinteger("Password Generator", "Enter the password length (8-32):", minvalue=8, maxvalue=32)
+        if length:
+            password = ''.join(random.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(length))
+            self.password_entry.delete(0, tk.END)
+            self.password_entry.insert(0, password)
+            self.update_password_strength(None)
+
+    def change_theme(self, mode):
+        if mode == "light":
+            self.root.config(bg="#f0f0f0")
+            style = ttk.Style()
+            style.theme_use("clam")
+        elif mode == "dark":
+            self.root.config(bg="#2e2e2e")
+            style = ttk.Style()
+            style.theme_use("alt")
+
+    def set_timeout(self):
+        timeout = simpledialog.askinteger("Set Timeout", "Enter timeout duration in minutes:", minvalue=1, maxvalue=60)
+        if timeout:
+            self.INACTIVITY_TIMEOUT = timeout * 60 * 1000
+            self.reset_inactivity_timer()
+
     def show_about(self):
-        messagebox.showinfo("About", "Password Manager v2.0\nDeveloped by Daksh Thapar")
+        messagebox.showinfo("About", "Password Manager v3.0\nDeveloped by Daksh Thapar")
 
 if __name__ == "__main__":
     root = tk.Tk()
