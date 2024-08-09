@@ -1,3 +1,5 @@
+import tkinter as tk
+from tkinter import messagebox
 from cryptography.fernet import Fernet
 import os
 
@@ -16,14 +18,12 @@ class PasswordManager:
         key = Fernet.generate_key()
         with open(self.key_file, "wb") as key_file:
             key_file.write(key)
-        print("A new encryption key has been generated and saved.")
 
     def load_key(self):
         try:
             with open(self.key_file, "rb") as key_file:
                 return key_file.read()
         except FileNotFoundError:
-            print("Key file not found. Generating a new key...")
             self.generate_key()
             return self.load_key()
 
@@ -39,7 +39,6 @@ class PasswordManager:
         encrypted_password = self.encrypt_password(password)
         with open(self.password_file, "a") as f:
             f.write(f"{service}:{encrypted_password.decode()}\n")
-        print(f"Password for {service} added successfully!")
 
     def get_password(self, service):
         try:
@@ -48,10 +47,8 @@ class PasswordManager:
                     stored_service, stored_password = line.strip().split(":")
                     if stored_service == service:
                         return self.decrypt_password(stored_password.encode())
-            print(f"No password found for {service}.")
             return None
         except FileNotFoundError:
-            print("Password file not found. No passwords stored yet.")
             return None
 
     def change_key(self):
@@ -69,10 +66,8 @@ class PasswordManager:
                     decrypted_password = Fernet(old_key).decrypt(encrypted_password.encode()).decode()
                     new_encrypted_password = Fernet(new_key).encrypt(decrypted_password.encode()).decode()
                     f.write(f"{service}:{new_encrypted_password}\n")
-
-            print("Secret key changed and passwords re-encrypted successfully!")
         except FileNotFoundError:
-            print("Password file not found. Cannot change key for non-existent passwords.")
+            pass
 
     def delete_password(self, service):
         try:
@@ -80,52 +75,82 @@ class PasswordManager:
                 lines = f.readlines()
 
             with open(self.password_file, "w") as f:
-                found = False
                 for line in lines:
                     stored_service, stored_password = line.strip().split(":")
                     if stored_service != service:
                         f.write(line)
-                    else:
-                        found = True
-                if found:
-                    print(f"Password for {service} deleted successfully.")
-                else:
-                    print(f"No password found for {service}.")
-
         except FileNotFoundError:
-            print("Password file not found. No passwords stored yet.")
+            pass
 
-def main():
-    pm = PasswordManager()
+class PasswordManagerGUI:
+    def __init__(self, root):
+        self.pm = PasswordManager()
+        self.root = root
+        self.root.title("Password Manager")
 
-    while True:
-        print("\nPassword Manager")
-        print("1. Add Password")
-        print("2. Get Password")
-        print("3. Change Secret Key")
-        print("4. Delete Password")
-        print("5. Exit")
-        choice = input("Enter your choice: ")
+        self.service_label = tk.Label(root, text="Service:")
+        self.service_label.grid(row=0, column=0, padx=10, pady=10)
 
-        if choice == '1':
-            service = input("Enter the service name: ")
-            password = input("Enter the password: ")
-            pm.add_password(service, password)
-        elif choice == '2':
-            service = input("Enter the service name: ")
-            password = pm.get_password(service)
-            if password:
-                print(f"The password for {service} is {password}")
-        elif choice == '3':
-            pm.change_key()
-        elif choice == '4':
-            service = input("Enter the service name: ")
-            pm.delete_password(service)
-        elif choice == '5':
-            print("Exiting Password Manager. Goodbye!")
-            break
+        self.service_entry = tk.Entry(root)
+        self.service_entry.grid(row=0, column=1, padx=10, pady=10)
+
+        self.password_label = tk.Label(root, text="Password:")
+        self.password_label.grid(row=1, column=0, padx=10, pady=10)
+
+        self.password_entry = tk.Entry(root)
+        self.password_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        self.add_button = tk.Button(root, text="Add Password", command=self.add_password)
+        self.add_button.grid(row=2, column=0, padx=10, pady=10)
+
+        self.get_button = tk.Button(root, text="Get Password", command=self.get_password)
+        self.get_button.grid(row=2, column=1, padx=10, pady=10)
+
+        self.change_key_button = tk.Button(root, text="Change Key", command=self.change_key)
+        self.change_key_button.grid(row=3, column=0, padx=10, pady=10)
+
+        self.delete_button = tk.Button(root, text="Delete Password", command=self.delete_password)
+        self.delete_button.grid(row=3, column=1, padx=10, pady=10)
+
+    def add_password(self):
+        service = self.service_entry.get()
+        password = self.password_entry.get()
+        if service and password:
+            self.pm.add_password(service, password)
+            messagebox.showinfo("Success", f"Password for {service} added successfully!")
+            self.clear_entries()
         else:
-            print("Invalid choice! Please try again.")
+            messagebox.showwarning("Input Error", "Please enter both service and password.")
+
+    def get_password(self):
+        service = self.service_entry.get()
+        if service:
+            password = self.pm.get_password(service)
+            if password:
+                messagebox.showinfo("Password Found", f"The password for {service} is {password}")
+            else:
+                messagebox.showwarning("Not Found", f"No password found for {service}.")
+        else:
+            messagebox.showwarning("Input Error", "Please enter a service name.")
+
+    def change_key(self):
+        self.pm.change_key()
+        messagebox.showinfo("Success", "Secret key changed successfully!")
+
+    def delete_password(self):
+        service = self.service_entry.get()
+        if service:
+            self.pm.delete_password(service)
+            messagebox.showinfo("Success", f"Password for {service} deleted successfully!")
+            self.clear_entries()
+        else:
+            messagebox.showwarning("Input Error", "Please enter a service name.")
+
+    def clear_entries(self):
+        self.service_entry.delete(0, tk.END)
+        self.password_entry.delete(0, tk.END)
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    gui = PasswordManagerGUI(root)
+    root.mainloop()
