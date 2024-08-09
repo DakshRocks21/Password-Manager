@@ -109,16 +109,31 @@ class PasswordManager:
             return False
 
 class PasswordManagerGUI:
+    INACTIVITY_TIMEOUT = 5 * 60 * 1000  # 5 minutes in milliseconds
+
     def __init__(self, root):
         self.pm = PasswordManager()
         self.root = root
         self.root.title("Password Manager")
-        self.root.geometry("500x450")
+        self.root.geometry("500x450") 
 
+        # Load JetBrains Mono font if available, otherwise use default
         self.custom_font = ("JetBrains Mono", 12)
         self.default_font = ("Helvetica", 12)
 
         self.show_login_screen()
+
+        # Set up inactivity timeout
+        self.inactivity_timer = None
+        self.root.bind_all("<Any-KeyPress>", self.reset_inactivity_timer)
+        self.root.bind_all("<Motion>", self.reset_inactivity_timer)
+        self.reset_inactivity_timer()
+
+    def reset_inactivity_timer(self, event=None):
+        """Reset the inactivity timer."""
+        if self.inactivity_timer is not None:
+            self.root.after_cancel(self.inactivity_timer)
+        self.inactivity_timer = self.root.after(self.INACTIVITY_TIMEOUT, self.lock_application)
 
     def show_login_screen(self):
         self.clear_root()
@@ -159,9 +174,9 @@ class PasswordManagerGUI:
 
         # Configure style
         style = ttk.Style()
-        style.configure("TLabel", font=self.custom_font)
-        style.configure("TButton", font=self.custom_font)
-        style.configure("TEntry", font=self.custom_font)
+        style.configure("TLabel", font=self.default_font)
+        style.configure("TButton", font=self.default_font)
+        style.configure("TEntry", font=self.default_font)
 
         # Frame for service and password inputs
         input_frame = ttk.Frame(self.root, padding="10 10 10 10")
@@ -222,6 +237,7 @@ class PasswordManagerGUI:
 
         file_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Lock", command=self.lock_application)
         file_menu.add_command(label="Change Key", command=self.change_key)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
@@ -229,6 +245,9 @@ class PasswordManagerGUI:
         help_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
+
+    def lock_application(self):
+        self.show_login_screen()
 
     def update_service_listbox(self):
         services = self.pm.get_all_services()
