@@ -12,15 +12,12 @@ class LoginScreen(Screen):
         self.password_manager = PasswordManager()  # Initialize the PasswordManager instance
 
         layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        
-        self.master_password_label = Label(text="Master Password:")
-        layout.add_widget(self.master_password_label)
+        layout.add_widget(Label(text="Master Password:"))
         
         self.master_password_input = TextInput(password=True)
         layout.add_widget(self.master_password_input)
         
-        self.login_button = Button(text="Login", on_press=self.login)
-        layout.add_widget(self.login_button)
+        layout.add_widget(Button(text="Login", on_press=self.login))
         
         self.add_widget(layout)
 
